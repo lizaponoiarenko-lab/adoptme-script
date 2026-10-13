@@ -22,9 +22,19 @@ local function completeTask(taskName)
     safeWait(1.5, 3)
 end
 
--- Быстрый поиск ClientData
+-- Умный поиск ClientData по всему ReplicatedStorage
 local function getClientData()
-    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData") or ReplicatedStorage:FindFirstChild("ClientModules") and ReplicatedStorage.ClientModules:FindFirstChild("ClientData")
+    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData", true)
+    
+    if not clientDataModule then
+        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+            if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
+                clientDataModule = obj
+                break
+            end
+        end
+    end
+
     if clientDataModule then
         local success, result = pcall(function() return require(clientDataModule) end)
         if success then return result end
@@ -36,7 +46,7 @@ end
 local function checkPetNeeds()
     local ClientData = getClientData()
     if not ClientData then
-        print("Подключение к данным Adopt Me...")
+        print("Поиск ClientData в игре...")
         return
     end
 
@@ -68,6 +78,7 @@ FarmTab:AddToggle({
     Name = "Включить Автофарм",
     Default = false,
     Callback = function(Value)
+        _G.AutoFound = Value
         _G.AutoFarm = Value
         if _G.AutoFarm then
             print("Автофарм запущен")

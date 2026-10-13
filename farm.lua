@@ -51,31 +51,30 @@ local function checkPetNeeds()
     local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
     if not equippedPets then return end
 
-    for _, pet in pairs(equippedPets) do
-        -- Универсальный поиск задач по разным возможным ключам
+    -- Глобальная таблица задач игрока в Adopt Me
+    local globalAilments = playerData.ailments
+
+    for petUniqueId, pet in pairs(equippedPets) do
         local ailments = nil
-        if pet.properties then
-            ailments = pet.properties.ailments or pet.properties.tasks or pet.properties.needs
-        end
-        if not ailments and pet.ailments then
+        
+        -- Проверяем глобальную таблицу по ID питомца
+        if globalAilments and globalAilments[petUniqueId] then
+            ailments = globalAilments[petUniqueId]
+        elseif pet.ailments then
             ailments = pet.ailments
+        elseif pet.properties and pet.properties.ailments then
+            ailments = pet.properties.ailments
         end
 
         if ailments then
-            for ailmentName, ailmentData in pairs(ailments) do
+            for ailmentName, _ in pairs(ailments) do
                 if _G.AutoFarm then
                     print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
-                    -- Здесь в будущем будет вызов выполнения задачи
                     safeWait(1.5, 3)
                 end
             end
         else
-            -- Выведем ключи свойств для отладки, если задач всё еще не видно
-            if pet.properties then
-                local keys = {}
-                for k, _ in pairs(pet.properties) do table.insert(keys, k) end
-                print("[Debug] Доступные ключи в properties:", table.concat(keys, ", "))
-            end
+            print("[Debug] У питомца ID:", tostring(petUniqueId), "пока нет активных задач")
         end
     end
 end

@@ -6,9 +6,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- Подключение к данным Adopt Me
-local ClientData = require(ReplicatedStorage:WaitForChild("ClientData"))
-
 -- Флаг состояния автофарма
 _G.AutoFarm = false
 
@@ -22,18 +19,22 @@ end
 local function completeTask(taskName)
     if not _G.AutoFarm then return end
     print("Выполняем задачу питомца: " .. tostring(taskName))
-    
-    -- Имитируем паузу живого игрока
     safeWait(1.5, 3.5)
-    
-    -- Пауза после выполнения
     safeWait(3, 6)
 end
 
 -- Проверка потребностей питомца
 local function checkPetNeeds()
+    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData")
+    if not clientDataModule then 
+        print("Ожидание подгрузки ClientData...")
+        return 
+    end
+
+    local success, ClientData = pcall(function() return require(clientDataModule) end)
+    if not success or not ClientData then return end
+
     local playerData = ClientData.get_data()[LocalPlayer.Name]
-    
     if playerData and playerData.equip_manager and playerData.equip_manager.pets then
         for _, pet in pairs(playerData.equip_manager.pets) do
             if pet.kind then
@@ -50,7 +51,7 @@ local function checkPetNeeds()
     end
 end
 
--- Создаем вкладку в меню (без внешних иконок)
+-- Создаем вкладку в меню
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false

@@ -1,5 +1,5 @@
 -- Adopt Me Safe Auto-Farm with GUI
-local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = true, ConfigFolder = "AdoptMeFarm"})
 
 local Players = game:GetService("Players")
@@ -59,20 +59,20 @@ local FarmTab = Window:MakeTab({
 
 -- Переключатель (Toggle) для включения/выключения
 FarmTab:AddToggle({
-    Name = "Включить автофарм",
+    Name = "Включить Автофарм",
     Default = false,
     Callback = function(Value)
         _G.AutoFarm = Value
-        if Value then
-            print("Автофарм включен!")
+        if _G.AutoFarm then
+            print("Автофарм запущен")
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    safeWait(5, 8)
+                    task.wait(5)
                 end
             end)
         else
-            print("Автофарм выключен.")
+            print("Автофарм остановлен")
         end
     end
 })

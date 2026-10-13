@@ -50,7 +50,7 @@ local function checkPetNeeds()
     end
 end
 
--- Создаем вкладку в меню (без иконки, чтобы не зависало)
+-- Создаем вкладку в меню (без внешних иконок)
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false

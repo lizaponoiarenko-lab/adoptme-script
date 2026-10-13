@@ -1,4 +1,4 @@
--- Adopt Me Farm via AilmentsClient
+-- Adopt Me Auto-Farm with Direct Ailment Trigger
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = true, ConfigFolder = "AdoptMeFarm"})
 
@@ -13,97 +13,108 @@ local function safeWait(minSec, maxSec)
     task.wait(waitTime)
 end
 
--- Безопасная загрузка Fsys модулей
-local function getFsysModule(modName)
+local function getFsys()
     local success, fsys = pcall(function()
         return require(ReplicatedStorage:WaitForChild("Fsys", 2))
     end)
     if success and fsys and fsys.load then
-        local s, mod = pcall(function() return fsys.load(modName) end)
-        if s and mod then return mod end
+        return fsys
     end
     return nil
 end
 
--- Выполнение задачи
-local function resolveTask(ailmentName, petUniqueId)
-    print(">>> ВЫПОЛНЯЕМ ЗАДАЧУ:", tostring(ailmentName))
+local function fireTask(ailmentName, petUniqueId)
+    print("[Действие] Выполняем задачу: " .. tostring(ailmentName))
     
-    -- Вызов разрешения потребности через контроллеры
-    pcall(function()
-        local ailmentsClient = getFsysModule("AilmentsClient")
-        if ailmentsClient and ailmentsClient.resolve_ailment then
-            ailmentsClient.resolve_ailment(petUniqueId, ailmentName)
-        end
-    end)
+    local fsys = getFsys()
+    if fsys then
+        pcall(function()
+            local ailmentsClient = fsys.load("AilmentsClient")
+            if ailmentsClient then
+                if ailmentsClient.resolve_ailment then
+                    ailmentsClient.resolve_ailment(petUniqueId, ailmentName)
+                elseif ailmentsClient.resolve then
+                    ailmentsClient.resolve(petUniqueId, ailmentName)
+                end
+            end
+        end)
+    end
 
     pcall(function()
-        local events = ReplicatedStorage:FindFirstChild("API")
-        if events then
-            if events:FindFirstChild("AilmentsServices/ResolveAilment") then
-                events["AilmentsServices/ResolveAilment"]:FireServer(petUniqueId, ailmentName)
-            elseif events:FindFirstChild("AilmentsServices/AilmentCompleted") then
-                events["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {["pet_unique"] = petUniqueId})
+        local api = ReplicatedStorage:FindFirstChild("API")
+        if api then
+            if api:FindFirstChild("AilmentsServices/AilmentCompleted") then
+                api["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {["pet_unique"] = petUniqueId})
+            elseif api:FindFirstChild("AilmentsServices/ResolveAilment") then
+                api["AilmentsServices/ResolveAilment"]:FireServer(petUniqueId, ailmentName)
             end
         end
     end)
 end
 
--- Главная функция сканирования
-local function checkPetNeeds()
-    local ailmentsClient = getFsysModule("AilmentsClient")
-    local clientData = getFsysModule("ClientData")
-    
+local function scanAndComplete()
+    local fsys = getFsys()
+    if not fsys then return end
+
+    local clientData = nil
+    pcall(function() clientData = fsys.load("ClientData") end)
     if not clientData then return end
 
     local playerData = nil
     pcall(function() playerData = clientData.get_data()[LocalPlayer.Name] end)
     if not playerData or not playerData.equip_manager or not playerData.equip_manager.pets then return end
 
-    for petUniqueId, pet in pairs(playerData.equip_manager.pets) do
-        local tasksFound = {}
+    for petUniqueId, _ in pairs(playerData.equip_manager.pets) do
+        local ailmentsList = {}
 
-        -- 1. Чтение прямо из AilmentsClient (самый свежий источник)
-        if ailmentsClient and ailmentsClient.get_active_ailments then
-            pcall(function()
-                local active = ailmentsClient.get_active_ailments()
+        -- Сканирование через AilmentsClient
+        pcall(function()
+            local ailmentsClient = fsys.load("AilmentsClient")
+            if ailmentsClient then
+                local active = nil
+                if ailmentsClient.get_active_ailments then
+                    active = ailmentsClient.get_active_ailments()
+                elseif ailmentsClient.active_ailments then
+                    active = ailmentsClient.active_ailments
+                end
+
                 if active then
-                    for _, taskObj in pairs(active) do
-                        if taskObj.pet_unique == petUniqueId or taskObj.unique == petUniqueId then
-                            table.insert(tasksFound, taskObj.kind or taskObj.name or taskObj.id)
-                        elseif type(taskObj) == "string" then
-                            table.insert(tasksFound, taskObj)
+                    for k, v in pairs(active) do
+                        if type(v) == "table" then
+                            local aName = v.kind or v.name or v.ailment or k
+                            table.insert(ailmentsList, tostring(aName))
+                        elseif type(v) == "string" then
+                            table.insert(ailmentsList, v)
                         end
                     end
                 end
-            end)
-        end
+            end
+        end)
 
-        -- 2. Запасная проверка через ClientData
-        if #tasksFound == 0 and playerData.ailments then
+        -- Сканирование через playerData.ailments
+        if #ailmentsList == 0 and playerData.ailments then
             local pAilments = playerData.ailments[petUniqueId] or playerData.ailments
             if type(pAilments) == "table" then
                 for aName, _ in pairs(pAilments) do
-                    table.insert(tasksFound, aName)
+                    table.insert(ailmentsList, tostring(aName))
                 end
             end
         end
 
-        -- Выполняем найденные задачи
-        if #tasksFound > 0 then
-            for _, taskName in ipairs(tasksFound) do
+        if #ailmentsList > 0 then
+            for _, taskName in ipairs(ailmentsList) do
                 if _G.AutoFarm then
+                    print(">>> ОБНАРУЖЕНА ЗАДАЧА:", taskName)
                     safeWait(1.5, 3)
-                    resolveTask(taskName, petUniqueId)
+                    fireTask(taskName, petUniqueId)
                 end
             end
         else
-            print("[Поиск] Активных задач пока нет (сканируем...)")
+            print("[Мониторинг v1500] Ожидание появления новых задач...")
         end
     end
 end
 
--- Интерфейс
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false
@@ -115,15 +126,15 @@ FarmTab:AddToggle({
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("=== Автофарм AilmentsClient запущен ===")
+            print("=== Автофарм v1500 Запущен ===")
             task.spawn(function()
                 while _G.AutoFarm do
-                    checkPetNeeds()
-                    task.wait(2.5)
+                    scanAndComplete()
+                    task.wait(3)
                 end
             end)
         else
-            print("=== Автофарм остановлен ===")
+            print("=== Автофарм Остановлен ===")
         end
     end
 })

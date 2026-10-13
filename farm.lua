@@ -22,28 +22,30 @@ local function completeTask(taskName)
     safeWait(1.5, 3)
 end
 
--- Надежное получение ClientData через игровой загрузчик Fsys
+-- Надежное получение ClientData через актуальный путь Adopt Me
 local function getClientData()
-    -- 1. Пробуем через Fsys (основной способ в современном Adopt Me)
+    -- 1. Точный путь к данным в текущей версии игры
+    local success, res = pcall(function()
+        return require(ReplicatedStorage.ClientModules.Core.ClientData)
+    end)
+    if success and res then return res end
+
+    -- 2. Резервный поиск через Fsys
     local successFsys, fsys = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Fsys", 2))
+        return require(ReplicatedStorage:WaitForChild("Fsys", 1))
     end)
     if successFsys and fsys and fsys.load then
         local successData, clientData = pcall(function()
             return fsys.load("ClientData")
         end)
-        if successData and clientData then
-            return clientData
-        end
+        if successData and clientData then return clientData end
     end
 
-    -- 2. Запасной вариант: поиск ModuleScript в игре
+    -- 3. Глобальный поиск по всем модулям
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
-            local successReq, result = pcall(require, obj)
-            if successReq and result then
-                return result
-            end
+            local s, r = pcall(require, obj)
+            if s and r then return r end
         end
     end
     
@@ -54,7 +56,7 @@ end
 local function checkPetNeeds()
     local ClientData = getClientData()
     if not ClientData then
-        print("Ожидание загрузки данных Adopt Me...")
+        print("Ожидание данных игрока...")
         return
     end
 

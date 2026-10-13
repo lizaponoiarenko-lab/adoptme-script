@@ -1,4 +1,4 @@
--- Adopt Me Safe Auto-Farm with GUI
+-- Adopt Me Safe Auto-Farm with Full Structure Dump
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = true, ConfigFolder = "AdoptMeFarm"})
 
@@ -7,11 +7,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
 _G.AutoFarm = false
-
-local function safeWait(minSec, maxSec)
-    local waitTime = math.random(minSec * 10, maxSec * 10) / 10
-    task.wait(waitTime)
-end
 
 local function getClientData()
     local success, res = pcall(function()
@@ -51,30 +46,15 @@ local function checkPetNeeds()
     local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
     if not equippedPets then return end
 
-    -- Глобальная таблица задач игрока в Adopt Me
-    local globalAilments = playerData.ailments
-
     for petUniqueId, pet in pairs(equippedPets) do
-        local ailments = nil
-        
-        -- Проверяем глобальную таблицу по ID питомца
-        if globalAilments and globalAilments[petUniqueId] then
-            ailments = globalAilments[petUniqueId]
-        elseif pet.ailments then
-            ailments = pet.ailments
-        elseif pet.properties and pet.properties.ailments then
-            ailments = pet.properties.ailments
-        end
-
-        if ailments then
-            for ailmentName, _ in pairs(ailments) do
-                if _G.AutoFarm then
-                    print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
-                    safeWait(1.5, 3)
+        print("=== СТРУКТУРА ПИТОМЦА ID:", tostring(petUniqueId), " ===")
+        for k, v in pairs(pet) do
+            print("  Ключ:", tostring(k), "| Тип:", typeof(v))
+            if typeof(v) == "table" then
+                for subK, subV in pairs(v) do
+                    print("    -> под-ключ:", tostring(subK), "| Тип:", typeof(subV))
                 end
             end
-        else
-            print("[Debug] У питомца ID:", tostring(petUniqueId), "пока нет активных задач")
         end
     end
 end
@@ -90,15 +70,15 @@ FarmTab:AddToggle({
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("=== Автофарм запущен ===")
+            print("=== Запуск сканирования ===")
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(2)
+                    task.wait(6) -- раз в 6 секунд выводим структуру
                 end
             end)
         else
-            print("=== Автофарм остановлен ===")
+            print("=== Остановлено ===")
         end
     end
 })

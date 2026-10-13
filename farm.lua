@@ -1,4 +1,4 @@
--- Adopt Me Advanced Auto-Farm with Client Ailments Hook
+-- Adopt Me Farm via AilmentsClient
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = true, ConfigFolder = "AdoptMeFarm"})
 
@@ -13,98 +13,97 @@ local function safeWait(minSec, maxSec)
     task.wait(waitTime)
 end
 
-local function getClientData()
-    local success, res = pcall(function()
-        return require(ReplicatedStorage.ClientModules.Core.ClientData)
+-- Безопасная загрузка Fsys модулей
+local function getFsysModule(modName)
+    local success, fsys = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Fsys", 2))
     end)
-    if success and res then return res end
-
-    local successFsys, fsys = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Fsys", 1))
-    end)
-    if successFsys and fsys and fsys.load then
-        local successData, clientData = pcall(function()
-            return fsys.load("ClientData")
-        end)
-        if successData and clientData then return clientData end
-    end
-
-    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
-            local s, r = pcall(require, obj)
-            if s and r then return r end
-        end
+    if success and fsys and fsys.load then
+        local s, mod = pcall(function() return fsys.load(modName) end)
+        if s and mod then return mod end
     end
     return nil
 end
 
--- Улучшенная функция выполнения задачи через игровые модули
-local function fireTaskCompletion(ailmentName, petUniqueId)
-    print("[Действие] Выполняем задачу: " .. tostring(ailmentName))
+-- Выполнение задачи
+local function resolveTask(ailmentName, petUniqueId)
+    print(">>> ВЫПОЛНЯЕМ ЗАДАЧУ:", tostring(ailmentName))
     
+    -- Вызов разрешения потребности через контроллеры
     pcall(function()
-        -- Способ 1: Через Fsys загрузчик модулей задач
-        local fsys = require(ReplicatedStorage.Fsys)
-        local ailmentsClient = fsys.load("AilmentsClient")
+        local ailmentsClient = getFsysModule("AilmentsClient")
         if ailmentsClient and ailmentsClient.resolve_ailment then
             ailmentsClient.resolve_ailment(petUniqueId, ailmentName)
-            return
         end
     end)
 
     pcall(function()
-        -- Способ 2: Прямой вызов через RemoteEvent в API
         local events = ReplicatedStorage:FindFirstChild("API")
-        if events and events:FindFirstChild("AilmentsServices/ResolveAilment") then
-            events["AilmentsServices/ResolveAilment"]:FireServer(petUniqueId, ailmentName)
-        elseif events and events:FindFirstChild("AilmentsServices/AilmentCompleted") then
-            events["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {["pet_unique"] = petUniqueId})
+        if events then
+            if events:FindFirstChild("AilmentsServices/ResolveAilment") then
+                events["AilmentsServices/ResolveAilment"]:FireServer(petUniqueId, ailmentName)
+            elseif events:FindFirstChild("AilmentsServices/AilmentCompleted") then
+                events["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {["pet_unique"] = petUniqueId})
+            end
         end
     end)
 end
 
+-- Главная функция сканирования
 local function checkPetNeeds()
-    local ClientData = getClientData()
-    if not ClientData then return end
+    local ailmentsClient = getFsysModule("AilmentsClient")
+    local clientData = getFsysModule("ClientData")
+    
+    if not clientData then return end
 
-    local success, playerData = pcall(function()
-        return ClientData.get_data()[LocalPlayer.Name]
-    end)
+    local playerData = nil
+    pcall(function() playerData = clientData.get_data()[LocalPlayer.Name] end)
+    if not playerData or not playerData.equip_manager or not playerData.equip_manager.pets then return end
 
-    if not success or not playerData then return end
+    for petUniqueId, pet in pairs(playerData.equip_manager.pets) do
+        local tasksFound = {}
 
-    local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
-    if not equippedPets then return end
+        -- 1. Чтение прямо из AilmentsClient (самый свежий источник)
+        if ailmentsClient and ailmentsClient.get_active_ailments then
+            pcall(function()
+                local active = ailmentsClient.get_active_ailments()
+                if active then
+                    for _, taskObj in pairs(active) do
+                        if taskObj.pet_unique == petUniqueId or taskObj.unique == petUniqueId then
+                            table.insert(tasksFound, taskObj.kind or taskObj.name or taskObj.id)
+                        elseif type(taskObj) == "string" then
+                            table.insert(tasksFound, taskObj)
+                        end
+                    end
+                end
+            end)
+        end
 
-    local activeAilments = playerData.ailments or playerData.ailments_manager
-
-    for petUniqueId, pet in pairs(equippedPets) do
-        local foundTask = false
-
-        if activeAilments and activeAilments[petUniqueId] then
-            for ailmentName, _ in pairs(activeAilments[petUniqueId]) do
-                if _G.AutoFarm then
-                    foundTask = true
-                    print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
-                    safeWait(1, 2)
-                    fireTaskCompletion(ailmentName, petUniqueId)
+        -- 2. Запасная проверка через ClientData
+        if #tasksFound == 0 and playerData.ailments then
+            local pAilments = playerData.ailments[petUniqueId] or playerData.ailments
+            if type(pAilments) == "table" then
+                for aName, _ in pairs(pAilments) do
+                    table.insert(tasksFound, aName)
                 end
             end
         end
 
-        if not foundTask and pet.ailments then
-            for ailmentName, _ in pairs(pet.ailments) do
+        -- Выполняем найденные задачи
+        if #tasksFound > 0 then
+            for _, taskName in ipairs(tasksFound) do
                 if _G.AutoFarm then
-                    foundTask = true
-                    print(">>> НАЙДЕНА ЗАДАЧА В ПИТОМЦЕ:", tostring(ailmentName))
-                    safeWait(1, 2)
-                    fireTaskCompletion(ailmentName, petUniqueId)
+                    safeWait(1.5, 3)
+                    resolveTask(taskName, petUniqueId)
                 end
             end
+        else
+            print("[Поиск] Активных задач пока нет (сканируем...)")
         end
     end
 end
 
+-- Интерфейс
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false
@@ -116,11 +115,11 @@ FarmTab:AddToggle({
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("=== Автофарм запущен ===")
+            print("=== Автофарм AilmentsClient запущен ===")
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(2)
+                    task.wait(2.5)
                 end
             end)
         else

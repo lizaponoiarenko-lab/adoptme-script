@@ -1,5 +1,5 @@
--- Adopt Me Auto-Farm v6 (Fresh File)
-local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/lizaponoiarenko-lab/adoptme-script/main/core_farm.lua'))()
+-- Adopt Me Auto-Farm v6 (Fixed)
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm v6", HidePremium = false, SaveConfig = false})
 
 local Players = game:GetService("Players")

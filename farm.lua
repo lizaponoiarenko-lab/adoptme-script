@@ -6,31 +6,19 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
 
--- Флаг состояния автофарма
 _G.AutoFarm = false
 
--- Функция безопасной задержки
 local function safeWait(minSec, maxSec)
     local waitTime = math.random(minSec * 10, maxSec * 10) / 10
     task.wait(waitTime)
 end
 
--- Выполнение отдельной задачи
-local function completeTask(taskName)
-    if not _G.AutoFarm then return end
-    print("Выполняем задачу питомца: " .. tostring(taskName))
-    safeWait(1.5, 3)
-end
-
--- Надежное получение ClientData через актуальный путь Adopt Me
 local function getClientData()
-    -- 1. Точный путь к данным в текущей версии игры
     local success, res = pcall(function()
         return require(ReplicatedStorage.ClientModules.Core.ClientData)
     end)
     if success and res then return res end
 
-    -- 2. Резервный поиск через Fsys
     local successFsys, fsys = pcall(function()
         return require(ReplicatedStorage:WaitForChild("Fsys", 1))
     end)
@@ -41,22 +29,19 @@ local function getClientData()
         if successData and clientData then return clientData end
     end
 
-    -- 3. Глобальный поиск по всем модулям
     for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
             local s, r = pcall(require, obj)
             if s and r then return r end
         end
     end
-    
     return nil
 end
 
--- Проверка потребностей питомца
 local function checkPetNeeds()
     local ClientData = getClientData()
     if not ClientData then
-        print("Ожидание данных игрока...")
+        print("[Debug] ClientData не найден")
         return
     end
 
@@ -64,44 +49,66 @@ local function checkPetNeeds()
         return ClientData.get_data()[LocalPlayer.Name]
     end)
 
-    if success and playerData and playerData.equip_manager and playerData.equip_manager.pets then
-        for _, pet in pairs(playerData.equip_manager.pets) do
-            if pet.kind then
-                local ailments = pet.properties and pet.properties.ailments
-                if ailments then
-                    for ailmentName, _ in pairs(ailments) do
-                        if not _G.AutoFarm then break end
-                        print("Найдена задача: " .. tostring(ailmentName))
-                        completeTask(ailmentName)
-                    end
+    if not success or not playerData then
+        print("[Debug] Не удалось получить playerData игрока")
+        return
+    end
+
+    -- Проверяем экипированных питомцев
+    local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
+    if not equippedPets then
+        print("[Debug] Нет экипированных питомцев!")
+        return
+    end
+
+    local foundAnyPet = false
+    for petUniqueId, pet in pairs(equippedPets) do
+        foundAnyPet = true
+        print("[Debug] Найден экипированный питомец/яйцо ID:", petUniqueId)
+        
+        local ailments = pet.properties and pet.properties.ailments
+        if ailments then
+            local count = 0
+            for ailmentName, _ in pairs(ailments) do
+                count = count + 1
+                if _G.AutoFarm then
+                    print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
+                    safeWait(1.5, 3)
                 end
             end
+            if count == 0 then
+                print("[Debug] У питомца сейчас нет активных задач (ailments пуст)")
+            end
+        else
+            print("[Debug] Свойство ailments у питомца отсутствует")
         end
+    end
+
+    if not foundAnyPet then
+        print("[Debug] Питомцы не достаны из инвентаря!")
     end
 end
 
--- Создаем вкладку в меню
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false
 })
 
--- Переключатель (Toggle)
 FarmTab:AddToggle({
     Name = "Включить Автофарм",
     Default = false,
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("Автофарм запущен")
+            print("=== Автофарм запущен ===")
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(2)
+                    task.wait(3)
                 end
             end)
         else
-            print("Автофарм остановлен")
+            print("=== Автофарм остановлен ===")
         end
     end
 })

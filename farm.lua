@@ -1,4 +1,4 @@
--- Adopt Me Full Auto-Farm with Remote Completion
+-- Adopt Me Advanced Auto-Farm with Client Ailments Hook
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
 local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = true, ConfigFolder = "AdoptMeFarm"})
 
@@ -8,13 +8,11 @@ local LocalPlayer = Players.LocalPlayer
 
 _G.AutoFarm = false
 
--- Безопасная пауза
 local function safeWait(minSec, maxSec)
     local waitTime = math.random(minSec * 10, maxSec * 10) / 10
     task.wait(waitTime)
 end
 
--- Получение модуля ClientData
 local function getClientData()
     local success, res = pcall(function()
         return require(ReplicatedStorage.ClientModules.Core.ClientData)
@@ -40,38 +38,40 @@ local function getClientData()
     return nil
 end
 
--- Отправка события завершения задачи на сервер
+-- Улучшенная функция выполнения задачи через игровые модули
 local function fireTaskCompletion(ailmentName, petUniqueId)
-    local API = ReplicatedStorage:FindFirstChild("API") or ReplicatedStorage:FindFirstChild(" me", true)
+    print("[Действие] Выполняем задачу: " .. tostring(ailmentName))
     
-    print("[Действие] Пытаемся выполнить задачу: " .. tostring(ailmentName))
-    
-    -- Безопасное выполнение задачи через универсальные ремоуты Adopt Me
     pcall(function()
-        if ReplicatedStorage:FindFirstChild("API") then
-            ReplicatedStorage.API["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {
-                ["pet_unique"] = petUniqueId
-            })
+        -- Способ 1: Через Fsys загрузчик модулей задач
+        local fsys = require(ReplicatedStorage.Fsys)
+        local ailmentsClient = fsys.load("AilmentsClient")
+        if ailmentsClient and ailmentsClient.resolve_ailment then
+            ailmentsClient.resolve_ailment(petUniqueId, ailmentName)
+            return
+        end
+    end)
+
+    pcall(function()
+        -- Способ 2: Прямой вызов через RemoteEvent в API
+        local events = ReplicatedStorage:FindFirstChild("API")
+        if events and events:FindFirstChild("AilmentsServices/ResolveAilment") then
+            events["AilmentsServices/ResolveAilment"]:FireServer(petUniqueId, ailmentName)
+        elseif events and events:FindFirstChild("AilmentsServices/AilmentCompleted") then
+            events["AilmentsServices/AilmentCompleted"]:FireServer(ailmentName, {["pet_unique"] = petUniqueId})
         end
     end)
 end
 
--- Проверка потребностей
 local function checkPetNeeds()
     local ClientData = getClientData()
-    if not ClientData then 
-        print("[Ошибка] ClientData недоступен")
-        return 
-    end
+    if not ClientData then return end
 
     local success, playerData = pcall(function()
         return ClientData.get_data()[LocalPlayer.Name]
     end)
 
-    if not success or not playerData then 
-        print("[Ошибка] Не удалось прочитать playerData")
-        return 
-    end
+    if not success or not playerData then return end
 
     local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
     if not equippedPets then return end
@@ -81,37 +81,30 @@ local function checkPetNeeds()
     for petUniqueId, pet in pairs(equippedPets) do
         local foundTask = false
 
-        -- Проверка задач в глобальной таблице
         if activeAilments and activeAilments[petUniqueId] then
             for ailmentName, _ in pairs(activeAilments[petUniqueId]) do
                 if _G.AutoFarm then
                     foundTask = true
-                    print(">>> НАЙДЕНА ЗАДАЧА ПИТОМЦА:", tostring(ailmentName))
-                    safeWait(1.5, 3)
+                    print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
+                    safeWait(1, 2)
                     fireTaskCompletion(ailmentName, petUniqueId)
                 end
             end
         end
 
-        -- Проверка задач внутри самого объекта питомца
         if not foundTask and pet.ailments then
             for ailmentName, _ in pairs(pet.ailments) do
                 if _G.AutoFarm then
                     foundTask = true
                     print(">>> НАЙДЕНА ЗАДАЧА В ПИТОМЦЕ:", tostring(ailmentName))
-                    safeWait(1.5, 3)
+                    safeWait(1, 2)
                     fireTaskCompletion(ailmentName, petUniqueId)
                 end
             end
         end
-
-        if not foundTask then
-            print("[Поиск] Сканируем задачи для питомца ID " .. tostring(petUniqueId) .. "...")
-        end
     end
 end
 
--- Вкладка меню
 local FarmTab = Window:MakeTab({
     Name = "Автофарм",
     PremiumOnly = false
@@ -123,11 +116,11 @@ FarmTab:AddToggle({
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("=== Автофарм с авто-завершением запущен ===")
+            print("=== Автофарм запущен ===")
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(3)
+                    task.wait(2)
                 end
             end)
         else

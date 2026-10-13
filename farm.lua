@@ -22,23 +22,31 @@ local function completeTask(taskName)
     safeWait(1.5, 3)
 end
 
--- Умный поиск ClientData по всему ReplicatedStorage
+-- Надежное получение ClientData через игровой загрузчик Fsys
 local function getClientData()
-    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData", true)
-    
-    if not clientDataModule then
-        for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
-            if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
-                clientDataModule = obj
-                break
-            end
+    -- 1. Пробуем через Fsys (основной способ в современном Adopt Me)
+    local successFsys, fsys = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Fsys", 2))
+    end)
+    if successFsys and fsys and fsys.load then
+        local successData, clientData = pcall(function()
+            return fsys.load("ClientData")
+        end)
+        if successData and clientData then
+            return clientData
         end
     end
 
-    if clientDataModule then
-        local success, result = pcall(function() return require(clientDataModule) end)
-        if success then return result end
+    -- 2. Запасной вариант: поиск ModuleScript в игре
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
+            local successReq, result = pcall(require, obj)
+            if successReq and result then
+                return result
+            end
+        end
     end
+    
     return nil
 end
 
@@ -46,12 +54,15 @@ end
 local function checkPetNeeds()
     local ClientData = getClientData()
     if not ClientData then
-        print("Поиск ClientData в игре...")
+        print("Ожидание загрузки данных Adopt Me...")
         return
     end
 
-    local playerData = ClientData.get_data()[LocalPlayer.Name]
-    if playerData and playerData.equip_manager and playerData.equip_manager.pets then
+    local success, playerData = pcall(function()
+        return ClientData.get_data()[LocalPlayer.Name]
+    end)
+
+    if success and playerData and playerData.equip_manager and playerData.equip_manager.pets then
         for _, pet in pairs(playerData.equip_manager.pets) do
             if pet.kind then
                 local ailments = pet.properties and pet.properties.ailments
@@ -78,7 +89,6 @@ FarmTab:AddToggle({
     Name = "Включить Автофарм",
     Default = false,
     Callback = function(Value)
-        _G.AutoFound = Value
         _G.AutoFarm = Value
         if _G.AutoFarm then
             print("Автофарм запущен")

@@ -1,6 +1,6 @@
--- Adopt Me Working Auto-Farm (Direct Ailments Resolve)
+-- Adopt Me Working Auto-Farm (Fixed Fsys)
 local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/jensonhirst/Orion/main/source'))()
-local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm NEW", HidePremium = false, SaveConfig = false})
+local Window = OrionLib:MakeWindow({Name = "Adopt Me Auto-Farm", HidePremium = false, SaveConfig = false})
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,27 +13,25 @@ local function safeWait(minSec, maxSec)
     task.wait(waitTime)
 end
 
-local function getFsys()
-    local success, fsys = pcall(function()
-        return require(ReplicatedStorage:WaitForChild("Fsys", 2))
+-- Безопасный поиск ClientData без вызова ошибок в Fsys
+local function getClientData()
+    local success, res = pcall(function()
+        return require(ReplicatedStorage.ClientModules.Core.ClientData)
     end)
-    if success and fsys and fsys.load then return fsys end
+    if success and res then return res end
+
+    for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("ModuleScript") and obj.Name == "ClientData" then
+            local s, r = pcall(require, obj)
+            if s and r then return r end
+        end
+    end
     return nil
 end
 
 local function fireTask(ailmentName, petUniqueId)
     print(">>> ЗАКРЫВАЕМ ЗАДАЧУ:", tostring(ailmentName))
     
-    local fsys = getFsys()
-    if fsys then
-        pcall(function()
-            local ailmentsClient = fsys.load("AilmentsClient")
-            if ailmentsClient and ailmentsClient.resolve_ailment then
-                ailmentsClient.resolve_ailment(petUniqueId, ailmentName)
-            end
-        end)
-    end
-
     pcall(function()
         local api = ReplicatedStorage:FindFirstChild("API")
         if api then
@@ -47,11 +45,11 @@ local function fireTask(ailmentName, petUniqueId)
 end
 
 local function scanAndComplete()
-    local fsys = getFsys()
-    if not fsys then return end
-
-    local clientData = pcall(function() return fsys.load("ClientData") end) and fsys.load("ClientData")
-    if not clientData then return end
+    local clientData = getClientData()
+    if not clientData then 
+        print("[Ошибка] ClientData не найден")
+        return 
+    end
 
     local playerData = nil
     pcall(function() playerData = clientData.get_data()[LocalPlayer.Name] end)
@@ -60,25 +58,8 @@ local function scanAndComplete()
     for petUniqueId, _ in pairs(playerData.equip_manager.pets) do
         local ailmentsList = {}
 
-        -- Сканирование через AilmentsClient
-        pcall(function()
-            local ailmentsClient = fsys.load("AilmentsClient")
-            if ailmentsClient then
-                local active = ailmentsClient.get_active_ailments and ailmentsClient.get_active_ailments() or ailmentsClient.active_ailments
-                if active then
-                    for k, v in pairs(active) do
-                        if type(v) == "table" then
-                            table.insert(ailmentsList, tostring(v.kind or v.name or v.ailment or k))
-                        elseif type(v) == "string" then
-                            table.insert(ailmentsList, v)
-                        end
-                    end
-                end
-            end
-        end)
-
-        -- Запасной вариант через playerData
-        if #ailmentsList == 0 and playerData.ailments then
+        -- Поиск задач в playerData.ailments
+        if playerData.ailments then
             local pAilments = playerData.ailments[petUniqueId] or playerData.ailments
             if type(pAilments) == "table" then
                 for aName, _ in pairs(pAilments) do
@@ -96,7 +77,7 @@ local function scanAndComplete()
                 end
             end
         else
-            print("[NEW-SCRYPT] Поиск задач...")
+            print("[OK] Сканирование без ошибок... Ожидаем задачи.")
         end
     end
 end
@@ -109,7 +90,7 @@ FarmTab:AddToggle({
     Callback = function(Value)
         _G.AutoFarm = Value
         if _G.AutoFarm then
-            print("=== СВЕЖИЙ СКРИПТ (autofarm.lua) ЗАПУЩЕН ===")
+            print("=== ИСПРАВЛЕННЫЙ АВТОФАРМ ЗАПУЩЕН ===")
             task.spawn(function()
                 while _G.AutoFarm do
                     scanAndComplete()

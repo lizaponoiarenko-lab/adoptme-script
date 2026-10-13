@@ -40,52 +40,43 @@ end
 
 local function checkPetNeeds()
     local ClientData = getClientData()
-    if not ClientData then
-        print("[Debug] ClientData не найден")
-        return
-    end
+    if not ClientData then return end
 
     local success, playerData = pcall(function()
         return ClientData.get_data()[LocalPlayer.Name]
     end)
 
-    if not success or not playerData then
-        print("[Debug] Не удалось получить playerData игрока")
-        return
-    end
+    if not success or not playerData then return end
 
-    -- Проверяем экипированных питомцев
     local equippedPets = playerData.equip_manager and playerData.equip_manager.pets
-    if not equippedPets then
-        print("[Debug] Нет экипированных питомцев!")
-        return
-    end
+    if not equippedPets then return end
 
-    local foundAnyPet = false
-    for petUniqueId, pet in pairs(equippedPets) do
-        foundAnyPet = true
-        print("[Debug] Найден экипированный питомец/яйцо ID:", petUniqueId)
-        
-        local ailments = pet.properties and pet.properties.ailments
+    for _, pet in pairs(equippedPets) do
+        -- Универсальный поиск задач по разным возможным ключам
+        local ailments = nil
+        if pet.properties then
+            ailments = pet.properties.ailments or pet.properties.tasks or pet.properties.needs
+        end
+        if not ailments and pet.ailments then
+            ailments = pet.ailments
+        end
+
         if ailments then
-            local count = 0
-            for ailmentName, _ in pairs(ailments) do
-                count = count + 1
+            for ailmentName, ailmentData in pairs(ailments) do
                 if _G.AutoFarm then
                     print(">>> НАЙДЕНА ЗАДАЧА:", tostring(ailmentName))
+                    -- Здесь в будущем будет вызов выполнения задачи
                     safeWait(1.5, 3)
                 end
             end
-            if count == 0 then
-                print("[Debug] У питомца сейчас нет активных задач (ailments пуст)")
-            end
         else
-            print("[Debug] Свойство ailments у питомца отсутствует")
+            -- Выведем ключи свойств для отладки, если задач всё еще не видно
+            if pet.properties then
+                local keys = {}
+                for k, _ in pairs(pet.properties) do table.insert(keys, k) end
+                print("[Debug] Доступные ключи в properties:", table.concat(keys, ", "))
+            end
         end
-    end
-
-    if not foundAnyPet then
-        print("[Debug] Питомцы не достаны из инвентаря!")
     end
 end
 
@@ -104,7 +95,7 @@ FarmTab:AddToggle({
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(3)
+                    task.wait(2)
                 end
             end)
         else

@@ -9,7 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 -- Флаг состояния автофарма
 _G.AutoFarm = false
 
--- Функция безопасной задержки (защита от античита)
+-- Функция безопасной задержки
 local function safeWait(minSec, maxSec)
     local waitTime = math.random(minSec * 10, maxSec * 10) / 10
     task.wait(waitTime)
@@ -19,20 +19,26 @@ end
 local function completeTask(taskName)
     if not _G.AutoFarm then return end
     print("Выполняем задачу питомца: " .. tostring(taskName))
-    safeWait(1.5, 3.5)
-    safeWait(3, 6)
+    safeWait(1.5, 3)
+end
+
+-- Быстрый поиск ClientData
+local function getClientData()
+    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData") or ReplicatedStorage:FindFirstChild("ClientModules") and ReplicatedStorage.ClientModules:FindFirstChild("ClientData")
+    if clientDataModule then
+        local success, result = pcall(function() return require(clientDataModule) end)
+        if success then return result end
+    end
+    return nil
 end
 
 -- Проверка потребностей питомца
 local function checkPetNeeds()
-    local clientDataModule = ReplicatedStorage:FindFirstChild("ClientData")
-    if not clientDataModule then 
-        print("Ожидание подгрузки ClientData...")
-        return 
+    local ClientData = getClientData()
+    if not ClientData then
+        print("Подключение к данным Adopt Me...")
+        return
     end
-
-    local success, ClientData = pcall(function() return require(clientDataModule) end)
-    if not success or not ClientData then return end
 
     local playerData = ClientData.get_data()[LocalPlayer.Name]
     if playerData and playerData.equip_manager and playerData.equip_manager.pets then
@@ -57,7 +63,7 @@ local FarmTab = Window:MakeTab({
     PremiumOnly = false
 })
 
--- Переключатель (Toggle) для включения/выключения
+-- Переключатель (Toggle)
 FarmTab:AddToggle({
     Name = "Включить Автофарм",
     Default = false,
@@ -68,7 +74,7 @@ FarmTab:AddToggle({
             task.spawn(function()
                 while _G.AutoFarm do
                     checkPetNeeds()
-                    task.wait(5)
+                    task.wait(2)
                 end
             end)
         else
